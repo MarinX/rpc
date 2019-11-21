@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"reflect"
 )
 
 // ----------------------------------------------------------------------------
@@ -22,7 +23,7 @@ type clientRequest struct {
 	// A String containing the name of the method to be invoked.
 	Method string `json:"method"`
 	// Object to pass as request parameter to the method.
-	Params []interface{} `json:"params,omitempty"`
+	Params interface{} `json:"params,omitempty"`
 	// The request id. This can be of any type. It is used to match the
 	// response with the request that it is replying to.
 	Id uint64 `json:"id"`
@@ -36,13 +37,11 @@ type clientResponse struct {
 }
 
 // EncodeClientRequest encodes parameters for a JSON-RPC client request.
-func EncodeClientRequest(method string, args interface{}) ([]byte, error) {
+func EncodeClientRequest(method string, args ...interface{}) ([]byte, error) {
 	c := &clientRequest{
 		Method: method,
 		Id:     uint64(rand.Int63()),
-	}
-	if args != nil {
-		c.Params = []interface{}{args}
+		Params: Params(args...),
 	}
 
 	return json.Marshal(c)
@@ -62,4 +61,48 @@ func DecodeClientResponse(r io.Reader, reply interface{}) error {
 		return errors.New("result is null")
 	}
 	return json.Unmarshal(*c.Result, reply)
+}
+
+func Params(params ...interface{}) interface{} {
+	var finalParams interface{}
+
+	// if params was nil skip this and p stays nil
+	if params != nil {
+		switch len(params) {
+		case 0: // no parameters were provided, do nothing so finalParam is nil and will be omitted
+		case 1: // one param was provided, use it directly as is, or wrap primitive types in array
+			if params[0] != nil {
+				var typeOf reflect.Type
+
+				// traverse until nil or not a pointer type
+				for typeOf = reflect.TypeOf(params[0]); typeOf != nil && typeOf.Kind() == reflect.Ptr; typeOf = typeOf.Elem() {
+				}
+
+				if typeOf != nil {
+					// now check if we can directly marshal the type or if it must be wrapped in an array
+					switch typeOf.Kind() {
+					// for these types we just do nothing, since value of p is already unwrapped from the array params
+					case reflect.Struct:
+						finalParams = params[0]
+					case reflect.Array:
+						finalParams = params[0]
+					case reflect.Slice:
+						finalParams = params[0]
+					case reflect.Interface:
+						finalParams = params[0]
+					case reflect.Map:
+						finalParams = params[0]
+					default: // everything else must stay in an array (int, string, etc)
+						finalParams = params
+					}
+				}
+			} else {
+				finalParams = []string{}
+			}
+		default: // if more than one parameter was provided it should be treated as an array
+			finalParams = params
+		}
+	}
+
+	return finalParams
 }
