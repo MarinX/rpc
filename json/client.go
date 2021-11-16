@@ -32,7 +32,7 @@ type clientRequest struct {
 // clientResponse represents a JSON-RPC response returned to a client.
 type clientResponse struct {
 	Result *json.RawMessage `json:"result"`
-	Error  interface{}      `json:"error"`
+	Error  *json.RawMessage `json:"error"`
 	Id     uint64           `json:"id"`
 }
 
@@ -49,12 +49,15 @@ func EncodeClientRequest(method string, args ...interface{}) ([]byte, error) {
 
 // DecodeClientResponse decodes the response body of a client request into
 // the interface reply.
-func DecodeClientResponse(r io.Reader, reply interface{}) error {
+func DecodeClientResponse(r io.Reader, reply interface{}, error interface{}) error {
 	var c clientResponse
 	if err := json.NewDecoder(r).Decode(&c); err != nil {
 		return err
 	}
 	if c.Error != nil {
+		if error != nil {
+			return json.Unmarshal(*c.Error, error)
+		}
 		return fmt.Errorf("%v", c.Error)
 	}
 	if c.Result == nil {
